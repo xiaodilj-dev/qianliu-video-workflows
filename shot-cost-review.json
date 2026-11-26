@@ -1,0 +1,354 @@
+{
+  "name": "Budget MiniMax H3 storyboard shots, reconcile render receipts and export an Excel cost report",
+  "nodes": [
+    {
+      "id": "aad408b0-b5ec-4e32-ab2d-d23d2327d64c",
+      "name": "Start budget review",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        100
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "41a999df-5515-47fc-8ba7-a86985e834e7",
+      "name": "Enter shot list, rates and cap",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        210,
+        100
+      ],
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"project\": \"Harbour trailer\",\n  \"budgetUsd\": 3,\n  \"usdPerSecond\": {\n    \"768P\": 0.078,\n    \"2K\": 0.1268\n  },\n  \"shots\": [\n    {\n      \"shotId\": \"S010\",\n      \"preset\": \"768P\",\n      \"seconds\": 5,\n      \"maxTakes\": 2,\n      \"receipts\": []\n    },\n    {\n      \"shotId\": \"S020\",\n      \"preset\": \"2K\",\n      \"seconds\": 6,\n      \"maxTakes\": 2,\n      \"receipts\": []\n    },\n    {\n      \"shotId\": \"S030\",\n      \"preset\": \"768P\",\n      \"seconds\": 4,\n      \"maxTakes\": 1,\n      \"receipts\": []\n    }\n  ]\n}",
+        "options": {}
+      }
+    },
+    {
+      "id": "b2343c5f-1056-4f2c-916b-26c269f8b612",
+      "name": "Price first takes and retakes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        100
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// n8n Code node in \"Run Once for Each Item\" mode. Monetary math uses integer microdollars.\nconst { project, budgetUsd, usdPerSecond, shots } = $json;\nconst issues = [];\nconst rows = [];\nconst seen = new Set();\n\nfunction microdollars(value) {\n  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;\n  const match = /^(\\d+)(?:\\.(\\d{1,6}))?$/.exec(String(value));\n  if (!match) return null;\n  const units = Number(match[1]) * 1000000 + Number((match[2] || '').padEnd(6, '0'));\n  return Number.isSafeInteger(units) ? units : null;\n}\n\nconst cap = microdollars(budgetUsd);\nif (typeof project !== 'string' || !project.trim()) issues.push('Enter a project or batch name.');\nif (cap === null) issues.push('Enter a non-negative numeric USD budget with at most six decimal places.');\nif (!Array.isArray(shots) || !shots.length) issues.push('Add at least one shot.');\nconst rates = new Map();\nfor (const preset of ['768P', '2K']) {\n  const rate = microdollars(usdPerSecond?.[preset]);\n  if (rate !== null && rate > 0) rates.set(preset, rate);\n}\n\nlet firstPass = 0;\nlet fullBatch = 0;\nfor (const [i, shot] of (Array.isArray(shots) ? shots : []).entries()) {\n  const label = 'Row ' + (i + 1);\n  const id = typeof shot?.shotId === 'string' ? shot.shotId.trim() : '';\n  const preset = typeof shot?.preset === 'string' ? shot.preset.trim().toUpperCase() : '';\n  const rate = rates.get(preset);\n  const seconds = shot?.seconds;\n  const takes = shot?.maxTakes;\n  const before = issues.length;\n  if (!id) issues.push(label + ': enter a shot ID.');\n  else if (seen.has(id.toUpperCase())) issues.push(label + ': duplicate shot ID ' + id + '.');\n  if (id) seen.add(id.toUpperCase());\n  if (!rate) issues.push(label + ': use 768P or 2K and set a positive USD rate for it.');\n  if (!Number.isInteger(seconds) || seconds < 4 || seconds > 15) issues.push(label + ': seconds must be an integer from 4 to 15.');\n  if (!Number.isSafeInteger(takes) || takes < 1) issues.push(label + ': maxTakes must count the first take and be a positive integer.');\n  if (issues.length !== before) continue;\n  const one = rate * seconds;\n  const all = one * takes;\n  if (!Number.isSafeInteger(firstPass + one) || !Number.isSafeInteger(fullBatch + all)) {\n    issues.push(label + ': the amount is too large to calculate precisely.');\n    continue;\n  }\n  firstPass += one;\n  fullBatch += all;\n  rows.push({project, shotId:id, preset, seconds, maxTakes:takes, firstTakeUsd:one/1000000, estimatedMaxUsd:all/1000000});\n}\nif (issues.length) return {json:{project, status:'invalid_input', issues}};\nreturn {json:{\n  project, status: fullBatch <= cap ? 'within_budget' : 'over_budget',\n  shotCount:rows.length, budgetUsd, firstPassUsd:firstPass/1000000,\n  retakeAllowanceUsd:(fullBatch-firstPass)/1000000, estimatedMaxUsd:fullBatch/1000000,\n  remainingUsd:(cap-fullBatch)/1000000, shots:rows\n}};\n"
+      }
+    },
+    {
+      "id": "91409de1-d6f3-475c-ae24-e26f0c7f0f02",
+      "name": "Match task IDs to planned takes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        670,
+        100
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const plan = $input.first().json;\nif (!Array.isArray(plan.shots)) throw new Error((plan.issues || ['Invalid shot list.']).join(' '));\nconst config = $('Enter shot list, rates and cap').first().json;\nconst seen = new Set();\nconst records = [];\nfor (const [i, shot] of plan.shots.entries()) {\n  const receipts = config.shots[i].receipts ?? [];\n  if (!Array.isArray(receipts)) throw new Error(shot.shotId + ': receipts must be an array.');\n  const entry = {shotId:shot.shotId, plannedPreset:shot.preset, plannedSeconds:shot.seconds, maxTakes:shot.maxTakes, shotCeilingUsd:shot.estimatedMaxUsd};\n  if (!receipts.length) {\n    records.push({json:{...entry, taskId:'', status:'no_receipt', note:'No task ID supplied.'}});\n  }\n  for (const receipt of receipts) {\n    const id = receipt?.taskId;\n    if (typeof id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error(shot.shotId + ': paste the exact task ID as a quoted string.');\n    if (seen.has(id)) throw new Error('Duplicate task ID: ' + id + '. A receipt can belong to only one take.');\n    seen.add(id);\n    const charge = receipt.chargedUsd ?? null;\n    if (charge !== null && (typeof charge !== 'number' || !Number.isFinite(charge) || charge < 0 || !Number.isSafeInteger(Math.round(charge * 1e6)) || Math.abs(Math.round(charge * 1e6) / 1e6 - charge) > 1e-12)) throw new Error(shot.shotId + ': chargedUsd must be null or a non-negative USD ledger amount with up to six decimal places.');\n    records.push({json:{...entry, taskId:id, chargedUsd:charge, receiptsAbovePlan:receipts.length>shot.maxTakes}});\n  }\n}\nreturn records;\n"
+      }
+    },
+    {
+      "id": "b294269b-bfce-4efc-8192-68ccf1caf46e",
+      "name": "Review each take",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        910,
+        100
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "386cb714-7a11-4e0b-bad1-601bf249fe60",
+      "name": "Is a task ID present?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1130,
+        260
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "4e5ae6fb-440b-41f6-a420-7f1686de7d8f",
+              "leftValue": "={{ $json.taskId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "db9ee0ec-32e5-4f7b-9efd-7400a502ae81",
+      "name": "Read existing H3 receipt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1380,
+        200
+      ],
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "timeout": 45000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "method": "GET",
+        "url": "=https://www.plusapi.cn/minimax/v2/query/video_generation/{{ encodeURIComponent($json.taskId) }}"
+      },
+      "retryOnFail": false,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "2b0fdb17-0c3e-4a5b-99fa-7a8c11eaa1ae",
+      "name": "Check status, seconds and returned resolution",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1620,
+        200
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const original = $('Is a task ID present?').item.json;\nconst response = $json;\nconst row = {...original, status:'lookup_error', actualPreset:'', outputSeconds:null, estimatedUsageUsd:null, note:''};\nconst done = note => ({json:{...row,note}});\nif (response.statusCode !== 200) return done(response.statusCode ? 'HTTP ' + response.statusCode + '. Check the token, task age or service status.' : 'Network error. Run again with the same task ID.');\nconst t = response.body?.task;\nif (!t || typeof t.id !== 'string' || t.id !== original.taskId) return done('Unmatched task ID in the response.');\nrow.status = typeof t.status === 'string' && t.status ? t.status : 'unknown_status';\nif (row.status !== 'succeeded') return done('No completed usage estimate. Check the ledger for any posted charge.');\nif (t.model !== 'MiniMax-H3' || (t.task_type && t.task_type !== 'generation')) return done('Different model or task type. Check this take against its own rate.');\nrow.actualPreset = String(t.resolution || '').toUpperCase();\nconst usage = t.usage;\nif (typeof usage?.output_seconds !== 'number' || !Number.isFinite(usage.output_seconds) || usage.output_seconds <= 0) return done('Receipt has no positive output_seconds. Check usage in the ledger.');\nrow.outputSeconds = usage.output_seconds;\nif (![usage.input_seconds,usage.input_image_count,usage.input_audio_seconds].every(v=>v===0)) return done('Reference inputs are present or unspecified. A text-only estimate would be incomplete.');\nconst rate = $('Enter shot list, rates and cap').first().json.usdPerSecond[row.actualPreset];\nif (!['768P','2K'].includes(row.actualPreset) || typeof rate !== 'number' || !(rate > 0)) return done('No price for the returned resolution.');\nconst micros = Math.round(rate * row.outputSeconds * 1e6);\nif (!Number.isSafeInteger(micros)) return done('Estimate exceeds supported numeric precision.');\nrow.estimatedUsageUsd = micros / 1e6;\nconst notes = [];\nif (row.actualPreset !== row.plannedPreset) notes.push('Resolution differs from plan.');\nif (row.outputSeconds !== row.plannedSeconds) notes.push('Output seconds differ from plan.');\nif (row.receiptsAbovePlan) notes.push('More takes than planned.');\nreturn done(notes.join(' '));\n"
+      }
+    },
+    {
+      "id": "d2c36923-183d-4c0a-a51e-f314cd48418b",
+      "name": "Reconcile plan, measured usage and ledger",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1150,
+        -80
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const plan = $('Price first takes and retakes').first().json;\nconst rows = $input.all().map(item=>item.json);\nconst tasks = rows.filter(row=>row.taskId);\nconst sum = (field) => {\n  let total = 0;\n  for (const row of tasks) {\n    if (row[field] == null) continue;\n    total += Math.round(row[field]*1e6);\n    if (!Number.isSafeInteger(total)) throw new Error('Total exceeds supported numeric precision.');\n  }\n  return total/1e6;\n};\nconst summary = {\n  rowType:'project', project:plan.project, planStatus:plan.status,\n  budgetUsd:plan.budgetUsd, plannedMaxUsd:plan.estimatedMaxUsd,\n  plannedFirstPassUsd:plan.firstPassUsd, plannedRetakesUsd:plan.retakeAllowanceUsd,\n  budgetLessPlanUsd:plan.remainingUsd, receiptCount:tasks.length,\n  missingLedgerCharges:tasks.filter(r=>r.chargedUsd==null).length,\n  receiptsWithoutEstimate:tasks.filter(r=>r.estimatedUsageUsd==null).length,\n  recordedChargesSubtotalUsd:sum('chargedUsd'), pricedUsageSubtotalUsd:sum('estimatedUsageUsd'),\n  note:'Subtotals cover known values only. Blank costs are unknown. Compare each receipt with the billing ledger.'\n};\nconst byShot = new Map(plan.shots.map(s=>[s.shotId,[]]));\nfor (const row of rows) byShot.get(row.shotId).push(row);\nconst report = [{json:summary}];\nfor (const s of plan.shots) {\n  const takes = byShot.get(s.shotId);\n  const tracked = takes.filter(r=>r.taskId);\n  report.push({json:{rowType:'shot plan',project:plan.project,shotId:s.shotId,plannedPreset:s.preset,plannedSeconds:s.seconds,maxTakes:s.maxTakes,shotCeilingUsd:s.estimatedMaxUsd,receiptCount:tracked.length,note:!tracked.length?'No task IDs supplied.':tracked.length>s.maxTakes?'More takes than planned.':''}});\n  for (const t of tracked) {\n    const variance = t.chargedUsd!=null && t.estimatedUsageUsd!=null ? (Math.round(t.chargedUsd*1e6)-Math.round(t.estimatedUsageUsd*1e6))/1e6 : null;\n    report.push({json:{rowType:'take',project:plan.project,shotId:s.shotId,taskId:t.taskId,taskStatus:t.status,actualPreset:t.actualPreset??'',outputSeconds:t.outputSeconds??null,estimatedUsageUsd:t.estimatedUsageUsd??null,chargedUsd:t.chargedUsd??null,chargedMinusEstimateUsd:variance,note:t.note??''}});\n  }\n}\nreturn report;\n"
+      }
+    },
+    {
+      "id": "093c4137-0bc5-4ca9-a389-6079f9929580",
+      "name": "Download the production cost report",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1410,
+        -80
+      ],
+      "parameters": {
+        "operation": "xlsx",
+        "binaryPropertyName": "data",
+        "options": {
+          "fileName": "shot-cost-review.xlsx",
+          "sheetName": "Production costs",
+          "headerRow": true
+        }
+      }
+    },
+    {
+      "id": "060d6da1-e512-49f3-9fc5-9ee28be252f6",
+      "name": "1. Plan before spending",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -65,
+        -260
+      ],
+      "parameters": {
+        "width": 675,
+        "height": 295,
+        "color": 5,
+        "content": "## Plan a short video batch\nRun the sample as imported to get an Excel file. The three shots, including budgeted retakes, total $2.6136 against a $3 cap.\n\nIn **Enter shot list, rates and cap**, set your project, rates, cap, shots and maximum takes (including the first). An over-budget plan is flagged in the report. You can still reconcile existing charges. No step creates a render."
+      }
+    },
+    {
+      "id": "d919b563-faa3-42ed-a310-13e30cd76a38",
+      "name": "2. Add receipts from your real renders",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        600,
+        455
+      ],
+      "parameters": {
+        "width": 715,
+        "height": 375,
+        "color": 4,
+        "content": "## Reconcile existing paid takes\nFor each shot, replace the empty receipts array with entries such as `[{\"taskId\":\"YOUR_EXISTING_ID\",\"chargedUsd\":null}]`. Copy the full ID as text. Fill chargedUsd only from the matching USD billing entry; enter 0 only for a verified zero charge. Each ID belongs to one take.\n\nOn **Read existing H3 receipt**, select an n8n Bearer Auth credential for the same Qianliu Hailuo-2 token used to create the task. MiniMax documents a seven-day query window. Run again later with the same IDs to refresh pending results. Requests run one at a time."
+      }
+    },
+    {
+      "id": "f4cf47ce-2875-4284-8d1c-47055377c924",
+      "name": "3. Read the workbook",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1140,
+        -465
+      ],
+      "parameters": {
+        "width": 665,
+        "height": 290,
+        "color": 7,
+        "content": "## Read the workbook\nOpen the last node, select **Binary** and download the XLSX. The project row compares the budget with the planned ceiling. Shot rows show the planned number of takes. Take rows compare an estimate from returned output seconds with your ledger charge. Unknown costs stay blank.\n\nRates in the example are dated 26 Nov 2026, from [Qianliu H3 pricing](https://www.plusapi.cn/pricing?keyword=MiniMax-H3), operated by the author. Replace them with your rates. Estimates cover text-only H3 generation; reference media, other tasks and unverified usage require separate review."
+      }
+    }
+  ],
+  "connections": {
+    "Start budget review": {
+      "main": [
+        [
+          {
+            "node": "Enter shot list, rates and cap",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enter shot list, rates and cap": {
+      "main": [
+        [
+          {
+            "node": "Price first takes and retakes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Price first takes and retakes": {
+      "main": [
+        [
+          {
+            "node": "Match task IDs to planned takes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match task IDs to planned takes": {
+      "main": [
+        [
+          {
+            "node": "Review each take",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review each take": {
+      "main": [
+        [
+          {
+            "node": "Reconcile plan, measured usage and ledger",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is a task ID present?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is a task ID present?": {
+      "main": [
+        [
+          {
+            "node": "Read existing H3 receipt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Review each take",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read existing H3 receipt": {
+      "main": [
+        [
+          {
+            "node": "Check status, seconds and returned resolution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check status, seconds and returned resolution": {
+      "main": [
+        [
+          {
+            "node": "Review each take",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reconcile plan, measured usage and ledger": {
+      "main": [
+        [
+          {
+            "node": "Download the production cost report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
