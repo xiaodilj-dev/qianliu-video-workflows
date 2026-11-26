@@ -29,6 +29,14 @@
 2. Open **Enter shot list, rates and cap**. Set the project budget, the per-second rate for each resolution, and the duration and maximum takes for each shot. Count the first take in that maximum.
 3. Choose **Execute workflow**. The sample reserves $1.4628 for first takes and $1.1508 for retakes. A $3.00 cap releases all three shots. With a $2.60 cap, open **Hold batch for review** to see the $0.0136 overrun.
 
+## 用已生成的镜头核对费用 / Reconcile completed takes
+
+[下载 n8n 费用核对工作流（JSON）](https://raw.githubusercontent.com/xiaodilj-dev/qianliu-video-workflows/main/shot-cost-review.json)。在 n8n 里选择 `Import from File` 后直接运行示例。最后一个节点的 `Binary` 输出是一份 Excel 表，列有三个镜头的首拍和重拍预算。示例可以离线运行。
+
+有实际拍摄记录后，在对应分镜的 `receipts` 中加入任务编号，例如 `[{"taskId":"1234567890123456789","chargedUsd":null}]`。将示例编号换成自己的，保留引号。在 `Read existing H3 receipt` 节点选择创建任务时所用令牌的 `Bearer Auth` 凭据，再运行一次。工作流每次只查询已有编号。把使用日志里这次拍摄的实际美元扣费填进 `chargedUsd`，表中就能比较扣费和按输出秒数计算的估价。带参考素材、仍在生成或缺少用量的镜头会标明原因，估价留空。MiniMax 的查询窗口为最近七天。[任务状态文档](https://platform.minimax.cn/docs/api-reference/video-generation-v2-query)
+
+In n8n, import the [receipt reconciliation workflow](https://raw.githubusercontent.com/xiaodilj-dev/qianliu-video-workflows/main/shot-cost-review.json) and run the sample to download the Excel budget from the final node’s `Binary` output. To reconcile your own takes, enter each existing task ID as a quoted string under its shot, choose the original token’s Bearer Auth credential, and enter its USD charge from your usage log when available. The workflow checks each listed ID once. It estimates completed text-only takes with sufficient usage data and flags the rest for review.
+
 ### Try one paid shot / 试拍一个镜头
 
 也可以在 n8n 内试拍。[下载单镜头工作流](https://raw.githubusercontent.com/xiaodilj-dev/qianliu-video-workflows/main/single-shot.json)，在空白工作流中选择 **Import from File**。默认的 `preview` 只展示请求和预算。决定生成时，在两个 HTTP 节点选择同一个 **Bearer Auth** 凭据，填入自己的千流 Hailuo-2 令牌。在输入节点将 `action` 改成 `create`，执行一次并保存回执中的 `task_id`。随后将 `action` 改为 `status`，把编号作为字符串填入 `taskId`，保存后用这个模式查询进度。提交超时先查任务记录。每次执行 `create` 都可能产生一笔新的生成费用。
