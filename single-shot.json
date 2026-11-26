@@ -1,0 +1,221 @@
+{
+  "name": "Preview, submit and check one MiniMax H3 shot",
+  "nodes": [
+    {
+      "id": "87288d94-f308-4d64-b4ac-714a089528ed",
+      "name": "Run manually",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        260
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "62fc6719-2d29-444d-b93f-2d90f7ce4f3c",
+      "name": "Choose action and enter shot",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        260
+      ],
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"action\": \"preview\",\n  \"taskId\": \"\",\n  \"prompt\": \"A locked vertical shot of a yellow umbrella crossing a wet stone bridge.\"\n}",
+        "options": {}
+      }
+    },
+    {
+      "id": "cf9be87d-3eb6-4f3f-a655-7c3831c96de2",
+      "name": "Prepare one shot or status check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        455,
+        260
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const {action, taskId, prompt} = $json;\nif (!['preview', 'create', 'status'].includes(action)) throw new Error('Choose preview, create or status.');\nif (typeof taskId !== 'string') throw new Error('Keep taskId in quotes to preserve every character.');\nconst id = taskId.trim();\nif (action === 'status') {\n  if (!id || id === '.' || id === '..') throw new Error('Paste the task_id from your create receipt before checking status.');\n  return {json:{action, taskId:id}};\n}\nif (action === 'create' && id) throw new Error('A task ID is already present. Choose status to check the existing render.');\nif (typeof prompt !== 'string' || !prompt.trim()) throw new Error('Enter a text prompt for the shot.');\nconst body = {model:'MiniMax-H3', content:[{type:'text',text:prompt.trim()}], resolution:'768P', duration:5, ratio:'9:16'};\nreturn {json:{action, body, estimatedUsdAtSampleRate:0.39, rateChecked:'2026-11-26'}};"
+      }
+    },
+    {
+      "id": "faf31098-2aa6-4988-8fbc-05edfb3d9984",
+      "name": "Choose preview, create or status",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        680,
+        260
+      ],
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 3,
+        "output": "={{ ['preview', 'create', 'status'].indexOf($json.action) }}"
+      }
+    },
+    {
+      "id": "51ef98af-b43a-454b-b02e-709ce09f41e4",
+      "name": "Preview the request and estimated cost",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        950,
+        50
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "18d144b1-2d73-47ac-bf36-007cd34c264c",
+      "name": "Create one paid render",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        950,
+        260
+      ],
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "timeout": 45000
+        },
+        "method": "POST",
+        "url": "https://www.plusapi.cn/minimax/v2/video_generation",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}"
+      },
+      "retryOnFail": false
+    },
+    {
+      "id": "db9ee0ec-32e5-4f7b-9efd-7400a502ae81",
+      "name": "Check the existing task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        950,
+        470
+      ],
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "timeout": 45000
+        },
+        "method": "GET",
+        "url": "=https://www.plusapi.cn/minimax/v2/query/video_generation/{{ encodeURIComponent($json.taskId) }}"
+      },
+      "retryOnFail": false
+    },
+    {
+      "id": "73adbd05-8cc6-4cc3-9caf-71d620992441",
+      "name": "Import and preview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -50,
+        -160
+      ],
+      "parameters": {
+        "width": 650,
+        "height": 325,
+        "color": 5,
+        "content": "## Try the example locally\nImport the JSON into n8n. In **Choose action and enter shot**, keep `action` set to `preview` and run the workflow. The preview shows a text-only 5-second vertical 768P request. Its estimated cost at the sample rate of $0.078 per output second is $0.39. [Check current Hailuo-2 rates](https://www.plusapi.cn/pricing?keyword=MiniMax-H3).\n\nFor a live request, create a **Bearer Auth** credential in n8n and select the same credential in both HTTP Request nodes. Enter your Qianliu Hailuo-2 token only in the credential form."
+      }
+    },
+    {
+      "id": "de20dec8-e9f6-4156-b25b-64ad9b029729",
+      "name": "Create once and check by ID",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        635,
+        -320
+      ],
+      "parameters": {
+        "width": 750,
+        "height": 340,
+        "color": 7,
+        "content": "## Render one shot and keep its receipt\nSet `action` to `create`, leave `taskId` empty and execute **once**. Each execution in create mode can start a billable render. Copy `task_id` from the response as a string. In the input node change `action` to `status`, paste the ID between the quotes, and save. Run the workflow again to check `task.status`. When it is `succeeded`, open `task.content.url`. If present, reconcile `task.usage.output_seconds` against your usage log.\n\nIf the create call times out, check your task history before submitting again. This workflow has no automatic retries or polling. Qianliu API maintains this example."
+      }
+    }
+  ],
+  "connections": {
+    "Run manually": {
+      "main": [
+        [
+          {
+            "node": "Choose action and enter shot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Choose action and enter shot": {
+      "main": [
+        [
+          {
+            "node": "Prepare one shot or status check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare one shot or status check": {
+      "main": [
+        [
+          {
+            "node": "Choose preview, create or status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Choose preview, create or status": {
+      "main": [
+        [
+          {
+            "node": "Preview the request and estimated cost",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create one paid render",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check the existing task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

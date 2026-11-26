@@ -31,4 +31,8 @@
 
 ### Try one paid shot / 试拍一个镜头
 
+也可以在 n8n 内试拍。[下载单镜头工作流](https://raw.githubusercontent.com/xiaodilj-dev/qianliu-video-workflows/main/single-shot.json)，在空白工作流中选择 **Import from File**。默认的 `preview` 只展示请求和预算。决定生成时，在两个 HTTP 节点选择同一个 **Bearer Auth** 凭据，填入自己的千流 Hailuo-2 令牌。在输入节点将 `action` 改成 `create`，执行一次并保存回执中的 `task_id`。随后将 `action` 改为 `status`，把编号作为字符串填入 `taskId`，保存后用这个模式查询进度。提交超时先查任务记录。每次执行 `create` 都可能产生一笔新的生成费用。
+
+**To run it in n8n**, [import the single-shot workflow](https://raw.githubusercontent.com/xiaodilj-dev/qianliu-video-workflows/main/single-shot.json). Start in `preview` to inspect the payload locally. Select the same Hailuo-2 **Bearer Auth** credential in both HTTP nodes. Execute `create` once, copy the returned `task_id`, then switch to `status`, paste the ID into `taskId` as a string, and save. You can repeat `status` to check that render. The default preview and the create, query and error paths were checked in n8n 2.49.7 using a local API fixture. A live render needs your funded account.
+
 At the sample Hailuo-2 rate, one 5-second 768P text-to-video render is estimated at **$0.39**. Check the [current MiniMax-H3 rates](https://www.plusapi.cn/pricing?keyword=MiniMax-H3) before running it. If you use Qianliu, [create an account / 注册千流](https://www.plusapi.cn/register?channel=c_ipvbujr0), then create a Hailuo-2 token in your account. In the [MiniMax H3 Postman collection](https://www.postman.com/qianliuapi-5737669/qianliu-api-developer-quickstart/collection/5nwixjg/api-minimax-h3), send the create request once and save the task ID. Use the same ID to check progress. Sending another create request can start a second paid render.
