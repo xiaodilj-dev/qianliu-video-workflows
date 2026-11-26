@@ -1,0 +1,37 @@
+{
+  "1": {
+    "class_type": "SeedanceGenerateVideo",
+    "inputs": {
+      "api_key": "REMOVE_ONLY_IN_A_QIANLIU_KEY_SESSION",
+      "base_url": "https://www.plusapi.cn/api/v3",
+      "model": "doubao-seedance-2-5-260628",
+      "prompt": "固定竖屏镜头。雨停了，石桥上的一把黄色雨伞慢慢移出画面。",
+      "resolution": "480p",
+      "ratio": "9:16",
+      "duration": 5,
+      "seed": 42,
+      "generate_audio": true,
+      "watermark": true,
+      "return_last_frame": false,
+      "execution_expires_after": 3600,
+      "safety_identifier": "",
+      "poll_interval_seconds": 5,
+      "timeout_seconds": 1800
+    },
+    "_meta": {
+      "title": "Seedance 2.5 · 核对千流令牌后试拍一次（付费）"
+    }
+  },
+  "2": {
+    "class_type": "PreviewAny",
+    "inputs": {
+      "source": [
+        "1",
+        7
+      ]
+    },
+    "_meta": {
+      "title": "查看任务回执 · response_json"
+    }
+  }
+}
