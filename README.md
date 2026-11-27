@@ -1,4 +1,18 @@
-# 在 n8n 中核对一张分镜表的生成预算
+# 短剧分镜预算与单镜头试拍
+
+手里已有分镜图、正在挑选视频模型，或只想先算重拍预算，可以从制作环节选一个入口。
+
+| 手头的任务 | 文件和用法 |
+| --- | --- |
+| 在 Toonflow 2.0.11 让分镜图动起来 | 下载 [Seedance 2.5 适配文件 1.2.0](https://github.com/xiaodilj-dev/qianliu-video-workflows/releases/download/toonflow-v1.2.0/qianliuSeedance.ts)，在媒体模型设置里导入。接一张图指定首帧，接两张图指定首尾帧。Flash 最高 720p，1080p 选标准版。[安装与升级](https://github.com/HBAI-Ltd/Toonflow-app/discussions/425) |
+| 在 ComfyUI 试一条文字分镜 | 下载[示例工作流](https://github.com/xiaodilj-dev/qianliu-video-workflows/blob/a367a138d1baaafcea43ceb3f8e55203696e3aa8/comfyui/seedance-first-shot.json)，依照[节点安装说明](https://github.com/Comfy-Org/ComfyUI/discussions/18017)配置依赖，在自己的环境中运行。保存任务回执再查询进度。 |
+| 在 n8n 给 MiniMax H3 镜头做预算 | [下载预算工作流](https://raw.githubusercontent.com/xiaodilj-dev/qianliu-video-workflows/main/shot-budget.json)。本机试算可直接运行，下面有预算超额与实际扣费的核对示例。 |
+
+千流 API 维护这些文件。下载和本地预算试算免费。发送生成请求会使用自己账户的额度，参考图随请求提交。已有实际制作计划的团队可按[模型、分辨率、秒数和预计月用量核价](https://www.plusapi.cn/#team-quote)。
+
+For Seedance 2.5, choose the Toonflow provider for storyboard images or the ComfyUI workflow for a text prompt. Both need a funded Qianliu account for a live render. The n8n budget example below runs offline.
+
+## 在 n8n 中核对一张分镜表的生成预算
 
 剪辑师给了三个镜头，制片预留 3 美元。其中两个镜头各允许生成两次。把时长、分辨率和次数放进工作流，就能在试拍前看到首轮金额、重拍预留和整批支出。试算在自己的 n8n 中完成，无需密钥，运行时不向模型发送请求。
 
