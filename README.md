@@ -8,7 +8,7 @@
 | 在 ComfyUI 试一条文字分镜 | 下载[示例工作流](https://github.com/xiaodilj-dev/qianliu-video-workflows/blob/a367a138d1baaafcea43ceb3f8e55203696e3aa8/comfyui/seedance-first-shot.json)，依照[节点安装说明](https://github.com/Comfy-Org/ComfyUI/discussions/18017)配置依赖，在自己的环境中运行。保存任务回执再查询进度。 |
 | 在 n8n 给 MiniMax H3 镜头做预算 | [下载预算工作流](https://raw.githubusercontent.com/xiaodilj-dev/qianliu-video-workflows/main/shot-budget.json)。本机试算可直接运行，下面有预算超额与实际扣费的核对示例。 |
 | 已经试过两条线路，准备选一家做下一批 | [下载视频试片对账表（Excel）](https://raw.githubusercontent.com/xiaodilj-dev/qianliu-video-workflows/6dcfbb3a87c44c9e982aaaabe3bd04c67813f955/shot-trial-comparison.xlsx)。填入各自的净扣费、生成秒数和最终采用秒数，就能算出每秒成片成本。表里是虚构样例，可在本机替换。 |
-| 先看美术软件能否接收分层 PSD | [下载三层 PSD 校验包](https://github.com/xiaodilj-dev/qianliu-video-workflows/raw/d656cf91f00ad0cd4ea6161ff499c4eae9485191/qianliu-layer-check.zip)，解压打开 `layer-check.psd`。隐藏标题、移动标靶，与包内参考图对照。图形为程序绘制的测试素材。要用自己的海报试拆并核对费用，见[单张试用指南](https://www.plusapi.cn/news/focus/262)。 |
+| 先看美术软件能否接收分层 PSD | [下载三层 PSD 校验包](https://github.com/xiaodilj-dev/qianliu-video-workflows/raw/5f5d1417c35ff234d0c0eb723c3a8c2942bbd636/qianliu-layer-check.zip)，解压打开 `layer-check.psd`。隐藏标题、移动标靶，与包内参考图对照。只读旧式名称的合成工具可用 Layer 01、02、03 分别定位底图、标靶和标题。图形为程序绘制的测试素材。要用自己的海报试拆并核对费用，见[单张试用指南](https://www.plusapi.cn/news/focus/262)。 |
 
 千流 API 维护这些文件。下载和本地预算试算免费。发送生成请求会使用自己账户的额度，参考图随请求提交。已有实际制作计划的团队可按[模型、分辨率、秒数和预计月用量核价](https://www.plusapi.cn/#team-quote)。
 
