@@ -11,6 +11,7 @@ from pathlib import Path
 
 from PIL import Image
 from psd_tools import PSDImage
+from psd_tools.constants import Tag
 
 
 def layer_order(item, position):
@@ -69,14 +70,23 @@ def export_psd(manifest_path, target):
     base = read_bitmap(ordered[0][2], folder)
     canvas = base.size
     document = PSDImage.new("RGBA", canvas, color=(0, 0, 0, 0))
-    for depth, _, item in ordered:
+    for number, (depth, _, item) in enumerate(ordered, start=1):
         if depth == 0:
             image, left, top = base, 0, 0
         else:
             image, left, top = place_bitmap(item, read_bitmap(item, folder), canvas)
         layer = document.create_pixel_layer(image, left=left, top=top)
         name = item.get("name") or ("背景" if depth == 0 else f"图层 {depth}")
-        layer.name = str(name).replace("\x00", "")[:255]
+        fallback = f"Layer {number:02d}"
+        name = str(name).replace("\x00", "")[:255] or fallback
+        try:
+            name.encode("macroman")
+        except UnicodeEncodeError:
+            # 有些合成工具只读取 PSD 的旧式名称字段。给它们保留独立层号。
+            layer.name = fallback
+            layer.tagged_blocks.set_data(Tag.UNICODE_LAYER_NAME, name)
+        else:
+            layer.name = name
 
     with target.open("xb") as output:
         try:
